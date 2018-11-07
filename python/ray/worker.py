@@ -96,18 +96,18 @@ class RayTaskError(Exception):
         self.exception = exception
         self.traceback_str = traceback_str
 
-    def __str__(self):
-        """Format a RayTaskError as a string."""
-        if self.traceback_str is None:
-            # This path is taken if getting the task arguments failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.exception))
-        else:
-            # This path is taken if the task execution failed.
-            return ("Remote function {}{}{} failed with:\n\n{}".format(
-                colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
-                self.traceback_str))
+    # def __str__(self):
+    #     """Format a RayTaskError as a string."""
+    #     if self.traceback_str is None:
+    #         # This path is taken if getting the task arguments failed.
+    #         return ("Remote function {}{}{} failed with:\n\n{}".format(
+    #             colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
+    #             self.exception))
+    #     else:
+    #         # This path is taken if the task execution failed.
+    #         return ("Remote function {}{}{} failed with:\n\n{}".format(
+    #             colorama.Fore.RED, self.function_name, colorama.Fore.RESET,
+    #             self.traceback_str))
 
 
 class Worker(object):
@@ -726,7 +726,7 @@ class Worker(object):
         except RayTaskError as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e.exception,
-                e.__str__() + e.traceback_str)
+                e.traceback_str)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -745,16 +745,11 @@ class Worker(object):
         except RayTaskError as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e.exception,
-                e.__str__() + e.traceback_str)
+                e.traceback_str)
         except Exception as e:
-            # Determine whether the exception occured during a task, not an
-            # actor method.
-            task_exception = task.actor_id().id() == NIL_ACTOR_ID
-            traceback_str = ray.utils.format_error_message(
-                traceback.format_exc(), task_exception=task_exception)
-            self._handle_process_task_failure(function_id, function_name,
-                                              return_object_ids, e,
-                                              traceback_str)
+            self._handle_process_task_failure(
+                function_id, function_name, return_object_ids, e,
+                ray.utils.format_error_message(traceback.format_exc()))
             return
 
         # Store the outputs in the local object store.
@@ -770,7 +765,7 @@ class Worker(object):
         except RayTaskError as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e.exception,
-                e.__str__() + e.traceback_str)
+                e.traceback_str)
         except Exception as e:
             self._handle_process_task_failure(
                 function_id, function_name, return_object_ids, e,
@@ -2192,6 +2187,23 @@ def register_custom_serializer(cls,
 
 def _raise_error_from_task(ray_task_error):
     traceback_str = ray_task_error.traceback_str
+
+    lines = traceback_str.split("\n")
+    lines_to_remove = []
+    line_no = 0
+    while line_no < len(lines):
+        if "ray/worker.py" in lines[line_no]:
+            lines_to_remove.append(line_no)
+            line_no += 1
+            while "File" not in lines[line_no]:
+                lines_to_remove.append(line_no)
+                line_no += 1
+        else:
+            line_no += 1
+    lines = [line for ind, line in enumerate(lines) if ind not in lines_to_remove]
+    traceback_str = "\n".join(lines)
+
+    print(traceback_str)
     tb = tblib.Traceback.from_string(traceback_str).as_traceback()
     raise ray_task_error.exception.with_traceback(tb)
 
